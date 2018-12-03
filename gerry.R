@@ -1,9 +1,15 @@
+## POLITICAL GERRYMANDERING IN OHIO
+
+## Authors: Desh Raj, Tara Abrishami, Vasileios Papaioannou
+
 library(rgdal)
 library(maptools)
 library(ggplot2)
 library(broom)
 library(rgeos)
 library(igraph)
+
+##-------- SCORE FUNCTIONS ----------------
 
 ## Score functions for a redistricting
 ## This function takes as input a possible
@@ -43,45 +49,62 @@ score.minority <- function(E){
   
 }
 
+#----------- MH SAMPLING ------------------------
+
 ## Sample new redistrictings using MH algorithm
 ## Input: A (adjacency matrix), D (redistricting
 ## by district), E (redistricting by precinct)
 ## Output: generated redistricting samples
 ## section 3.3
-sampleMH <- function(A, D, E, beta){
+sampleMH <- function(A, D, E, beta=0.5, T=10000){
   
   accept <- 0
-  samples <- list()
+  samples <- matrix(, nrow = T, ncol = length(E))
   
   # step 1
   dist <- rep(NA, length(D))
   E <- randomDist(precincts, length(dist))
   
-  # step 2
-  edge <- pickConflictingEdge(precincts, A)
-  u <- edge[1]; v <- edge[2]
-  E.new <- E
+  samples[i] <- E
   
-  if (runif(1,0,1) < 0.5){
-    E.new[u] <- E[v]
-  } else {
-    E.new[v] <- E[u]
-  }
-  
-  D.new <- getDistrictsFromPrecincts(E.new)
-  accept.prob <- (conflicted(D, A)/conflicted(D.new, A)) * 
-    exp(-beta * (score.total(E.new) - score.total(E)))
-  if (accept.prob > 1){
-    accept.prob = 1
-  }
-  
-  if (accept > runif(1,0,1)){
-    D <- D.new
-    E <- E.new
+  for (i in 2:T){
     
+    # step 2
+    
+    edge <- pickConflictingEdge(precincts, A)
+    u <- edge[1]; v <- edge[2]
+    E.new <- E
+    
+    if (runif(1,0,1) < 0.5){
+      E.new[u] <- E[v]
+    } else {
+      E.new[v] <- E[u]
+    }
+    
+    D.new <- getDistrictsFromPrecincts(E.new)
+    
+    # step 3
+    
+    accept.prob <- (conflicted(D, A)/conflicted(D.new, A)) * 
+      exp(-beta * (score.total(E.new) - score.total(E)))
+    if (accept.prob > 1){
+      accept.prob = 1
+    }
+    
+    if (accept.prob > runif(1,0,1)){
+      D <- D.new
+      E <- E.new
+      accept <- accept + 1
+    }
+    
+    samples[i] <- E
   }
+  
+  return (list(samples, accept))
   
 }
+
+#-------- HELPER FUNCTIONS FOR SAMPLING -----------
 
 ## Pick any conflicting edge randomly in graph
 ## Conflicting edge means the vertices belong to 
@@ -137,7 +160,9 @@ conflicted <- function(D, A){
   }
 }
 
-## find connected components
+#------- DATA PROCESSING FUNCTIONS -------------
+
+## Get full adjacency matrix from dense lists
 getAdjMatrix <- function(adj){
   n <- length(adj)
   A <- matrix(0, nrow = n, ncol = n)
@@ -149,6 +174,10 @@ getAdjMatrix <- function(adj){
   return (A)
 }
 
+## Find all connected components in the graph
+## Note: This function is not being used in the
+## code at present, but available in case of
+## future requirement.
 findConnectedComponents <- function(A){
   n <- dim(A)[1]
   C <- matrix(0, nrow = n, ncol = n)
@@ -214,8 +243,7 @@ getDistrictsFromPrecincts <- function(E){
   return (D)
 }
 
-##----------------------------------------------------------------
-## DRIVER CODE
+##---------- DRIVER CODE --------------------
 
 ## read shapefile
 ohio <- readOGR("ohio/precincts_results.shp")
