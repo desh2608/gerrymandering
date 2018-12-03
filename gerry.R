@@ -11,10 +11,12 @@ library(igraph)
 ## which is the weighted sum of several
 ## scores.
 
-## A redistricting E is just a list of vectors,
-## where each element in the list represents
-## a district, and each element in a vector
-## represents a precinct.
+## Two redistricting formats are available:
+## D => list of vectors, where each vector 
+## represents a district, and each element in a 
+## vector represents a precinct
+## E => dictionary of precinct-to-district
+## allocation
 
 # Total score: section 3.1
 score.total <- function(E){
@@ -42,17 +44,42 @@ score.minority <- function(E){
 }
 
 ## Sample new redistrictings using MH algorithm
-## Input: vector of precinct ids, adjacency matrix
+## Input: A (adjacency matrix), D (redistricting
+## by district), E (redistricting by precinct)
 ## Output: generated redistricting samples
 ## section 3.3
-sampleMH <- function(precincts, A){
+sampleMH <- function(A, D, E, beta){
+  
+  accept <- 0
+  samples <- list()
   
   # step 1
-  dist <- rep(NA, 16)
-  E <- randomDist(precincts, len(dist))
+  dist <- rep(NA, length(D))
+  E <- randomDist(precincts, length(dist))
   
   # step 2
-  list[u, v] <- pickConflictingEdge(precincts, A)
+  edge <- pickConflictingEdge(precincts, A)
+  u <- edge[1]; v <- edge[2]
+  E.new <- E
+  
+  if (runif(1,0,1) < 0.5){
+    E.new[u] <- E[v]
+  } else {
+    E.new[v] <- E[u]
+  }
+  
+  D.new <- getDistrictsFromPrecincts(E.new)
+  accept.prob <- (conflicted(D, A)/conflicted(D.new, A)) * 
+    exp(-beta * (score.total(E.new) - score.total(E)))
+  if (accept.prob > 1){
+    accept.prob = 1
+  }
+  
+  if (accept > runif(1,0,1)){
+    D <- D.new
+    E <- E.new
+    
+  }
   
 }
 
@@ -63,7 +90,8 @@ sampleMH <- function(precincts, A){
 pickConflictingEdge <- function(E, A){
   edges <- findConflictingEdges(E, A)
   n <- length(edges)
-  ind <- runif()
+  ind <- ceiling(runif(1, 0, n))
+  return (edges[[ind]])
 }
 
 ## Find all conflicting edges in graph
@@ -74,12 +102,14 @@ findConflictingEdges <- function(E, A){
   edges <- which(A==1, arr.ind = TRUE)
   conflict <- list()
   j <- 1
-  for (i in 1:length(edges)){
-    if(E[edges[i,1]] != E[edges[i,2]]){
-      conflict[[j]] <- edges[i]
+  for (i in 1:dim(edges)[1]){
+    if(!is.na(E[edges[i,1]]) && !is.na(E[edges[i,2]]) && 
+        (E[edges[i,1]] != E[edges[i,2]])){
+      conflict[[j]] <- edges[i,]
       j <- j+1
     }
   }
+  return (conflict)
 }
 
 ## Create random districts from given precincts
@@ -91,13 +121,15 @@ randomDist <- function(precincts, num_dist){
 
 ## Count number of conflicted edges in a 
 ## redistricting
-conflicted <- function(D, adj){
+## inputs: D (redistricting by districts),
+## A (adjacency matrix)
+conflicted <- function(D, A){
   total <- 0
   for (i in 1:length(D)){
     district <- D[i]
     for (j in 1:(length(district)-1)){
       for (k in j+1:length(district)){
-        if (adj[j,k]==0){
+        if (A[j,k]==0){
           conflicted <- conflicted + 1
         }
       }
@@ -145,7 +177,7 @@ preprocess <- function(state){
   
   # remove precincts with <NA> districts
   data.df <- data.frame(data)
-  data.new <- as.matrix(data.df[complete.cases(data.df),])
+  data.new <- data.df[complete.cases(data.df),]
   
   return(data.new)
 }
@@ -154,15 +186,32 @@ preprocess <- function(state){
 getRedistrictingByDistrict <- function(data){
   districts <- unique(data[,2])
   n <- length(districts)
-  p <- list()
+  D <- list()
   for (i in 1:length(districts)){
-    p[[i]] <- subset(data[,1], data[,2]==districts[i])
+    D[[i]] <- subset(data[,1], data[,2]==districts[i])
+  }
+  return (D)
+}
+
+getRedistrictingByPrecinct <- function(data, n){
+  p <- rep(NA, n)
+  for (i in 1:n){
+    p[i] <- data[toString(i),2]
   }
   return (p)
 }
 
-getRedistrictingByPrecinct <- function(data){
-  return (list(data[,2]))
+## Function to get District wise list, given a
+## dictionary of precinct allocations
+getDistrictsFromPrecincts <- function(E){
+  n <- ifelse( !all(is.na(E)), max(E, na.rm=T), NA)
+  D <- vector("list", n)
+  for (i in 1:length(E)){
+    if(!is.na(E[i])){
+      D[[E[i]]] <- c(D[[E[i]]], i)
+    }
+  }
+  return (D)
 }
 
 ##----------------------------------------------------------------
@@ -182,5 +231,5 @@ C <- findConnectedComponents(A)
 data <- preprocess(ohio)
 
 ## initial redistricting
-E <- getRedistrictingByPrecinct(data)
+E <- getRedistrictingByPrecinct(data, length(ohio))
 D <- getRedistrictingByDistrict(data)
