@@ -23,9 +23,35 @@ score.total <- function(E){
   
 }
 
+#function to calculate precinct populations
+#voter turnout in Ohio: 64.2% (according to http://www.electproject.org/2016g)
+#population of Ohio: 11.66 million (2017) 
 # Population score: section 3.1.1
-score.pop <- function(E){
+pop.num <- function(x) {
+  if (is.na(x)) {
+    return(0)
+  } else {
+    return(x)
+  }
+}
+
+score.pop <- function(D){
+  ohio.population <- 11660000
+  district.pop <- rep(0, length(D))
+  for (i in 1:length(D)) {
+    district <- D[[i]]
+    for (j in 1:length(district)) {
+      district.pop[i] = district.pop[i] + pop.num(ohio$PRES_DEM16[j]) + pop.num(ohio$PRES_REP16[j]) + pop.num(ohio$PRES_GRN16[j])
+    }
+  }
+  print(district.pop)
   
+  pop.ideal <- ohio.population/length(D)
+  score <-0
+  for (i in 1:length(D)) {
+    score = score + (district.pop[i]/0.642 - 1)^2
+  }
+  return(sqrt(score))
 }
 
 # Isoperimetric score: section 3.1.2
