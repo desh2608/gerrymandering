@@ -26,8 +26,8 @@ library(spatialEco)
 ## allocation
 
 # Total score: section 3.1
-score.total <- function(E){
-  
+score.total <- function(D, E){
+  return(score.pop(D) + score.isoperimetric(E)/100)
 }
 
 #function to calculate precinct populations
@@ -51,8 +51,7 @@ score.pop <- function(D){
       district.pop[i] = district.pop[i] + pop.num(ohio$PRES_DEM16[j]) + pop.num(ohio$PRES_REP16[j]) + pop.num(ohio$PRES_GRN16[j])
     }
   }
-  print(district.pop)
-  
+
   pop.ideal <- ohio.population/length(D)
   pop.score <-0
   for (i in 1:length(D)) {
@@ -89,22 +88,20 @@ score.minority <- function(E){
 ## by district), E (redistricting by precinct)
 ## Output: generated redistricting samples
 ## section 3.3
-sampleMH <- function(A, D, E, beta=0.5, T=10000){
+sampleMH <- function(A, D, E, beta=0.5, T=100){
   
   accept <- 0
   samples <- matrix(, nrow = T, ncol = length(E))
-  
+
   # step 1
   dist <- rep(NA, length(D))
-  E <- randomDist(precincts, length(dist))
-  
-  samples[i] <- E
-  
+  samples[1,] <- E 
+
   for (i in 2:T){
     
     # step 2
     
-    edge <- pickConflictingEdge(precincts, A)
+    edge <- pickConflictingEdge(E, A)
     u <- edge[1]; v <- edge[2]
     E.new <- E
     
@@ -118,8 +115,9 @@ sampleMH <- function(A, D, E, beta=0.5, T=10000){
     
     # step 3
     
-    accept.prob <- (conflicted(D, A)/conflicted(D.new, A)) * 
-      exp(-beta * (score.total(E.new) - score.total(E)))
+    accept.prob <- (conflicted(D, A)/conflicted(D.new, A)) *
+    exp(-beta * (score.total(D.new, E.new) - score.total(D, E)))
+    print(score.total(D.new, E.new))
     if (accept.prob > 1){
       accept.prob = 1
     }
@@ -182,11 +180,11 @@ randomDist <- function(precincts, num_dist){
 conflicted <- function(D, A){
   total <- 0
   for (i in 1:length(D)){
-    district <- D[i]
+    district <- D[[i]]
     for (j in 1:(length(district)-1)){
       for (k in j+1:length(district)){
         if (A[j,k]==0){
-          conflicted <- conflicted + 1
+          total <- total + 1
         }
       }
     }
@@ -276,7 +274,6 @@ getDistrictsFromPrecincts <- function(E){
   return (D)
 }
 
-<<<<<<< HEAD
 getInitialDistrict <-function(state, county_file) {
   ## code to get initial districting
   district_by_county <- readLines(county_file)
@@ -318,8 +315,8 @@ C <- findConnectedComponents(A)
 data <- preprocess(ohio)
 
 ## initial redistricting
-E <- getRedistrictingByPrecinct(data, length(ohio))
-D <- getRedistrictingByDistrict(data)
+#E <- getRedistrictingByPrecinct(data, length(ohio))
+#D <- getRedistrictingByDistrict(data)
 
 ## initial redistricting from county data (with correct number of districts)
 E <- getInitialDistrict(ohio, "counties_to_districts.txt")
@@ -327,3 +324,5 @@ D <- getDistrictsFromPrecincts(E)
 
 ## plot the initial district mapping because it's beautiful
 plotDistrict(ohio, E)
+
+sample <- sampleMH(A, D, E)
