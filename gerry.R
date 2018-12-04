@@ -4,6 +4,7 @@ library(ggplot2)
 library(broom)
 library(rgeos)
 library(igraph)
+library(spatialEco)
 
 ## Score functions for a redistricting
 ## This function takes as input a possible
@@ -47,16 +48,22 @@ score.pop <- function(D){
   print(district.pop)
   
   pop.ideal <- ohio.population/length(D)
-  score <-0
+  pop.score <-0
   for (i in 1:length(D)) {
-    score = score + (district.pop[i]/0.642 - 1)^2
+    pop.score = pop.score + ((district.pop[i]/0.642)/pop.ideal - 1)^2
   }
-  return(sqrt(score))
+  return(sqrt(pop.score))
 }
 
 # Isoperimetric score: section 3.1.2
 score.isoperimetric <- function(E){
-  
+  district.map <- unionSpatialPolygons(ohio, E)
+  perimeters <- polyPerimeter(district.map)
+  iso.score <- 0
+  for (i in 1:length(perimeters)) {
+    iso.score = iso.score + (perimeters[i])^2/district.map@polygons[[i]]@Polygons[[1]]@area
+  }
+  return(iso.score)
 }
 
 # County score: section 3.1.3
@@ -66,7 +73,7 @@ score.county <- function(E){
 
 # Minority score: section 3.1.4
 score.minority <- function(E){
-  
+  #is not implemented because we do not have the data
 }
 
 ## Sample new redistrictings using MH algorithm
