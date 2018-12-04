@@ -2,13 +2,22 @@
 
 ## Authors: Desh Raj, Tara Abrishami, Vasileios Papaioannou
 
-library(rgdal)
-library(maptools)
-library(ggplot2)
-library(broom)
-library(rgeos)
-library(igraph)
-library(spatialEco)
+# Install function for packages    
+packages<-function(x){
+  x<-as.character(match.call()[[2]])
+  if (!require(x,character.only=TRUE)){
+    install.packages(pkgs=x,repos="http://cran.r-project.org")
+    require(x,character.only=TRUE)
+  }
+}
+
+packages(rgdal)
+packages(maptools)
+packages(ggplot2)
+packages(broom)
+packages(rgeos)
+packages(igraph)
+packages(spatialEco)
 
 ##-------- SCORE FUNCTIONS ----------------
 
@@ -189,6 +198,7 @@ conflicted <- function(D, A){
       }
     }
   }
+  return (total)
 }
 
 #------- DATA PROCESSING FUNCTIONS -------------
@@ -314,7 +324,7 @@ C <- findConnectedComponents(A)
 ## remove NA rows from data
 data <- preprocess(ohio)
 
-## initial redistricting
+## random redistricting
 #E <- getRedistrictingByPrecinct(data, length(ohio))
 #D <- getRedistrictingByDistrict(data)
 
@@ -323,6 +333,6 @@ E <- getInitialDistrict(ohio, "counties_to_districts.txt")
 D <- getDistrictsFromPrecincts(E)
 
 ## plot the initial district mapping because it's beautiful
-plotDistrict(ohio, E)
+# plotDistrict(ohio, E)
 
 sample <- sampleMH(A, D, E)
