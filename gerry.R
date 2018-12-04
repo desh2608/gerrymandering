@@ -247,6 +247,25 @@ getDistrictsFromPrecincts <- function(E){
   return (D)
 }
 
+getInitialDistrict <-function(state, county_file) {
+  ## code to get initial districting
+  district_by_county <- readLines(county_file)
+  county_membership <- state$CNTY_NA
+  precinct_to_district <- rep(0, length(county_membership))
+  for (i in 1:length(county_membership)) {
+    for (j in 1:16) {
+      if (!is.na(county_membership[i])) {
+        if (grepl(county_membership[i], district_by_county[j])) {
+          precinct_to_district[i] = j
+        }
+      } else {
+        precinct_to_district[i] = 1
+      }
+    }
+  }
+  return(precinct_to_district)
+}
+
 ##----------------------------------------------------------------
 ## DRIVER CODE
 
@@ -266,3 +285,7 @@ data <- preprocess(ohio)
 ## initial redistricting
 E <- getRedistrictingByPrecinct(data, length(ohio))
 D <- getRedistrictingByDistrict(data)
+
+## initial redistricting from county data (with correct number of districts)
+E <- getInitialDistrict(ohio, "counties_to_districts.txt")
+D <- getDistrictsFromPrecincts(E)
