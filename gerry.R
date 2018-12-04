@@ -8,6 +8,7 @@ library(ggplot2)
 library(broom)
 library(rgeos)
 library(igraph)
+library(spatialEco)
 
 ##-------- SCORE FUNCTIONS ----------------
 
@@ -29,14 +30,46 @@ score.total <- function(E){
   
 }
 
+#function to calculate precinct populations
+#voter turnout in Ohio: 64.2% (according to http://www.electproject.org/2016g)
+#population of Ohio: 11.66 million (2017) 
 # Population score: section 3.1.1
-score.pop <- function(E){
+pop.num <- function(x) {
+  if (is.na(x)) {
+    return(0)
+  } else {
+    return(x)
+  }
+}
+
+score.pop <- function(D){
+  ohio.population <- 11660000
+  district.pop <- rep(0, length(D))
+  for (i in 1:length(D)) {
+    district <- D[[i]]
+    for (j in 1:length(district)) {
+      district.pop[i] = district.pop[i] + pop.num(ohio$PRES_DEM16[j]) + pop.num(ohio$PRES_REP16[j]) + pop.num(ohio$PRES_GRN16[j])
+    }
+  }
+  print(district.pop)
   
+  pop.ideal <- ohio.population/length(D)
+  pop.score <-0
+  for (i in 1:length(D)) {
+    pop.score = pop.score + ((district.pop[i]/0.642)/pop.ideal - 1)^2
+  }
+  return(sqrt(pop.score))
 }
 
 # Isoperimetric score: section 3.1.2
 score.isoperimetric <- function(E){
-  
+  district.map <- unionSpatialPolygons(ohio, E)
+  perimeters <- polyPerimeter(district.map)
+  iso.score <- 0
+  for (i in 1:length(perimeters)) {
+    iso.score = iso.score + (perimeters[i])^2/district.map@polygons[[i]]@Polygons[[1]]@area
+  }
+  return(iso.score)
 }
 
 # County score: section 3.1.3
@@ -46,7 +79,7 @@ score.county <- function(E){
 
 # Minority score: section 3.1.4
 score.minority <- function(E){
-  
+  #is not implemented because we do not have the data
 }
 
 #----------- MH SAMPLING ------------------------
@@ -243,7 +276,33 @@ getDistrictsFromPrecincts <- function(E){
   return (D)
 }
 
-##---------- DRIVER CODE --------------------
+<<<<<<< HEAD
+getInitialDistrict <-function(state, county_file) {
+  ## code to get initial districting
+  district_by_county <- readLines(county_file)
+  county_membership <- state$CNTY_NA
+  precinct_to_district <- rep(0, length(county_membership))
+  for (i in 1:length(county_membership)) {
+    for (j in 1:16) {
+      if (!is.na(county_membership[i])) {
+        if (grepl(county_membership[i], district_by_county[j])) {
+          precinct_to_district[i] = j
+        }
+      } else {
+        precinct_to_district[i] = 1
+      }
+    }
+  }
+  return(precinct_to_district)
+}
+
+plotDistrict <- function(state, E) {
+  map = unionSpatialPolygons(state, E)
+  plot(map, col = c("turquoise", "red", "orange", "yellow", "blue", "coral2", "cornflowerblue", "darkmagenta","darkseagreen2", "deeppink", "forestgreen", "chocolate4", "burlywood4", "azure1", "cornsilk3", "darkorchid1"))
+}
+
+##----------------------------------------------------------------
+## DRIVER CODE
 
 ## read shapefile
 ohio <- readOGR("ohio/precincts_results.shp")
@@ -261,3 +320,10 @@ data <- preprocess(ohio)
 ## initial redistricting
 E <- getRedistrictingByPrecinct(data, length(ohio))
 D <- getRedistrictingByDistrict(data)
+
+## initial redistricting from county data (with correct number of districts)
+E <- getInitialDistrict(ohio, "counties_to_districts.txt")
+D <- getDistrictsFromPrecincts(E)
+
+## plot the initial district mapping because it's beautiful
+plotDistrict(ohio, E)
