@@ -2,13 +2,22 @@
 
 ## Authors: Desh Raj, Tara Abrishami, Vasileios Papaioannou
 
-library(rgdal)
-library(maptools)
-library(ggplot2)
-library(broom)
-library(rgeos)
-library(igraph)
-library(spatialEco)
+# Install function for packages    
+packages<-function(x){
+  x<-as.character(match.call()[[2]])
+  if (!require(x,character.only=TRUE)){
+    install.packages(pkgs=x,repos="http://cran.r-project.org")
+    require(x,character.only=TRUE)
+  }
+}
+
+packages(rgdal)
+packages(maptools)
+packages(ggplot2)
+packages(broom)
+packages(rgeos)
+packages(igraph)
+packages(spatialEco)
 
 ##-------- SCORE FUNCTIONS ----------------
 
@@ -276,7 +285,6 @@ getDistrictsFromPrecincts <- function(E){
   return (D)
 }
 
-<<<<<<< HEAD
 getInitialDistrict <-function(state, county_file) {
   ## code to get initial districting
   district_by_county <- readLines(county_file)
