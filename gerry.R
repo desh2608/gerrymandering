@@ -198,6 +198,7 @@ conflicted <- function(D, A){
       }
     }
   }
+  return (total)
 }
 
 #------- DATA PROCESSING FUNCTIONS -------------
@@ -323,7 +324,7 @@ C <- findConnectedComponents(A)
 ## remove NA rows from data
 data <- preprocess(ohio)
 
-## initial redistricting
+## random redistricting
 #E <- getRedistrictingByPrecinct(data, length(ohio))
 #D <- getRedistrictingByDistrict(data)
 
@@ -332,6 +333,6 @@ E <- getInitialDistrict(ohio, "counties_to_districts.txt")
 D <- getDistrictsFromPrecincts(E)
 
 ## plot the initial district mapping because it's beautiful
-plotDistrict(ohio, E)
+# plotDistrict(ohio, E)
 
 sample <- sampleMH(A, D, E)
