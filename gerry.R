@@ -266,6 +266,11 @@ getInitialDistrict <-function(state, county_file) {
   return(precinct_to_district)
 }
 
+plotDistrict <- function(state, E) {
+  map = unionSpatialPolygons(state, E)
+  plot(map, col = c("turquoise", "red", "orange", "yellow", "blue", "coral2", "cornflowerblue", "darkmagenta","darkseagreen2", "deeppink", "forestgreen", "chocolate4", "burlywood4", "azure1", "cornsilk3", "darkorchid1"))
+}
+
 ##----------------------------------------------------------------
 ## DRIVER CODE
 
@@ -289,3 +294,6 @@ D <- getRedistrictingByDistrict(data)
 ## initial redistricting from county data (with correct number of districts)
 E <- getInitialDistrict(ohio, "counties_to_districts.txt")
 D <- getDistrictsFromPrecincts(E)
+
+## plot the initial district mapping because it's beautiful
+plotDistrict(ohio, E)
