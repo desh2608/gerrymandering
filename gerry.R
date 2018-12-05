@@ -18,6 +18,7 @@ packages(broom)
 packages(rgeos)
 packages(igraph)
 packages(spatialEco)
+packages(rlist)
 
 ##-------- SCORE FUNCTIONS ----------------
 
@@ -36,7 +37,7 @@ packages(spatialEco)
 
 # Total score: section 3.1
 score.total <- function(state, D, iso.score){
-  return(10*score.pop(D) + score.county(state, D) + iso.score/10) 
+  return(10*score.pop(D) + iso.score/10) 
 }
 
 #function to calculate precinct populations
@@ -83,9 +84,6 @@ score.county <- function(state, D){
     district = D[[i]]
     district.counties = rep(NA, length(district))
     for (j in 1:length(district)) {
-      print(district[j])
-      print(state$CNTY_GE[9])
-      print(state$CNTY_GE[district[j]])
       district.counties[j] = state$CNTY_GE[district[j]]
     }
     district.counties = unique(district.counties)
@@ -94,7 +92,7 @@ score.county <- function(state, D){
   frequencies = as.vector(table(all_counties))
   split.two = sum(frequencies > 2)
   split.three = sum(frequencies > 3)
-  return(split.two + 10*split.three)
+  return(c(split.two,split.three))
 }
 
 # Minority score: section 3.1.4
@@ -139,6 +137,9 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
     # step 2
     
     edge <- pickConflictingEdge(conflicted.edges)
+    while (sum(edge == c(0, 0)) == 2) {
+      edge <- pickConflictingEdge(conflicted.edges)
+    }
     
     u <- edge[1]; v <- edge[2]
     E.new <- E
@@ -151,6 +152,7 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
     }
     
     D.new <- getDistrictsFromPrecincts(E.new)
+    print(score.county(ohio, D))
     print("starting to update iso scores")
 
     iso.score.new <- isoperimetric.scores
@@ -165,11 +167,9 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
       for (e in 1:length(edges)) {
         if (E[e] != E[u]) {
           for (j in 1:length(conflicted.edges.new)) {
-            if (sum(conflicted.edges.new[[j]] == c(e, u)) == 2) {
-              conflicted.edges.new[[j]] = c(0,0)
-            } else if (sum(conflicted.edges.new[[j]] == c(u, e)) == 2) {
-              conflicted.edges.new[[j]] = c(0,0)
-            }
+            if (sum(conflicted.edges.new[[j]] == c(e, u)) == 2 || sum(conflicted.edges.new[[j]] == c(u, e)) == 2) {
+              conflicted.edges.new = removeEdge(conflicted.edges.new, c(e, u), c(u, e))
+            } 
           }
         }
         if (E.new[e] != E.new[u]) {
@@ -206,12 +206,11 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
     print("update iso scores")
     
     # step 3
-    print(iso.score.new)
     if (max(iso.score.new) < 1000) {
       new_total_score = score.total(ohio, D.new, sum(iso.score.new))
       old_total_score = score.total(ohio, D, sum(isoperimetric.scores))
       accept.prob <- (length(conflicted.edges)/length(conflicted.edges.new)) *
-      exp(-beta * (score.total(D.new, E.new) - score.total(D, E)))
+      exp(-beta * (score.total(ohio, D.new, sum(iso.score.new)) - score.total(ohio, D, sum(isoperimetric.scores))))
       if (accept.prob > 1){
         accept.prob = 1
       }
@@ -236,17 +235,29 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
   
 }
 
+
 #-------- HELPER FUNCTIONS FOR SAMPLING -----------
+
+removeEdge <- function(my.list, my.tuple1, my.tuple2) {
+  new.list <- list()
+  j <- 1
+  for (i in 1:length(my.list)) {
+    if (sum(my.list[[i]] == my.tuple1) != 2 && sum(my.list[[i]] == my.tuple2) !=2) {
+      new.list[[j]] <- my.list[[i]]
+      j = j + 1
+    }
+  }
+  return(new.list)
+}
 
 ## Pick any conflicting edge randomly in graph
 ## Conflicting edge means the vertices belong to 
 ## different districts, i.e., the edge
 ## crosses a district boundary.
 pickConflictingEdge <- function(edges) {
-  #edges <- findConflictingEdges(E, A)
-  total <- length(edges)
   n <- length(edges)
   ind <- ceiling(runif(1, 0, n))
+  print(ind)
   return (edges[[ind]])
 }
 
@@ -371,11 +382,27 @@ getInitialDistrict <-function(state, county_file) {
           precinct_to_district[i] = j
         }
       } else {
-        precinct_to_district[i] = 1
+        precinct_to_district[i] = NA
       }
     }
   }
   return(precinct_to_district)
+}
+
+assignNAprecincts <- function(E, A){
+  while(anyNA(E)){
+    print(sum(is.na(E)))
+    NAs = which(is.na(E))
+    for (i in 1:length(NAs)) {
+      precinct = NAs[i]
+      adjacent_precincts = which(A[precinct,] == 1)
+      adj.precinct = which(!is.na(E[adjacent_precincts]))[1]
+      if (!is.na(adj.precinct)) {
+        E[precinct] = E[adj.precinct]
+      }
+    }
+  }
+  return(E)
 }
 
 ## Functions for data analysis
@@ -410,6 +437,8 @@ getElectionResults <- function(state, D) {
 ##----------------------------------------------------------------
 ## DRIVER CODE
 
+set.seed(1)
+
 ## read shapefile
 ohio <- readOGR("ohio/precincts_results.shp")
 
@@ -418,10 +447,10 @@ adj_matrix <- gTouches(ohio, byid=TRUE, returnDense=FALSE)
 
 ## find connected components
 A <- getAdjMatrix(adj_matrix)
-C <- findConnectedComponents(A)
+#C <- findConnectedComponents(A)
 
 ## remove NA rows from data
-data <- preprocess(ohio)
+#data <- preprocess(ohio)
 
 ## random redistricting
 #E <- getRedistrictingByPrecinct(data, length(ohio))
@@ -429,9 +458,10 @@ data <- preprocess(ohio)
 
 ## initial redistricting from county data (with correct number of districts)
 E <- getInitialDistrict(ohio, "counties_to_districts.txt")
+E <- assignNAprecincts(E, A)
 D <- getDistrictsFromPrecincts(E)
 
 ## plot the initial district mapping because it's beautiful
 # plotDistrict(ohio, E)
 
-sample <- sampleMH(A, D, E)
+#sample <- sampleMH(A, D, E)
