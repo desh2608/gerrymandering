@@ -36,7 +36,7 @@ packages(spatialEco)
 
 # Total score: section 3.1
 score.total <- function(D, E){
-  return(score.pop(D) + score.isoperimetric(E)/100)
+  return(score.pop(D)) 
 }
 
 #function to calculate precinct populations
@@ -70,14 +70,10 @@ score.pop <- function(D){
 }
 
 # Isoperimetric score: section 3.1.2
-score.isoperimetric <- function(E){
-  district.map <- unionSpatialPolygons(ohio, E)
-  perimeters <- polyPerimeter(district.map)
-  iso.score <- 0
-  for (i in 1:length(perimeters)) {
-    iso.score = iso.score + (perimeters[i])^2/district.map@polygons[[i]]@Polygons[[1]]@area
-  }
-  return(iso.score)
+score.isoperimetric <- function(district){
+  district.map <- unionSpatialPolygons(ohio[district,], rep(1,length(district)))
+  perimeter <- polyPerimeter(district.map)
+  return(perimeter^2/district.map@polygons[[1]]@Polygons[[1]]@area)
 }
 
 # County score: section 3.1.3
@@ -99,6 +95,15 @@ score.minority <- function(E){
 ## section 3.3
 sampleMH <- function(A, D, E, beta=0.5, T=100){
   
+  isoperimetric.scores <- rep(0, length(D)) 
+  for (i in 1:length(D)) {
+    isoperimetric.scores[i] = score.isoperimetric(D[[i]])
+  }
+  print("computed initial iso scores")
+  
+  conflicted.edges <- unique(findConflictingEdges(E, A))
+  number.conflicted <- length(conflicted.edges)
+  
   accept <- 0
   samples <- matrix(, nrow = T, ncol = length(E))
 
@@ -110,7 +115,8 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
     
     # step 2
     
-    edge <- pickConflictingEdge(E, A)
+    edge <- pickConflictingEdge(conflicted.edges)
+    
     u <- edge[1]; v <- edge[2]
     E.new <- E
     
@@ -121,23 +127,51 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
     }
     
     D.new <- getDistrictsFromPrecincts(E.new)
+    print("starting to update iso scores")
+    iso.score.new <- isoperimetric.scores
+    if (E[u]!=E.new[u]){
+      old_dist <- E[u]
+      new_dist <- E.new[u]
+      iso.score.new[old_dist] <- score.isoperimetric(D.new[[old_dist]])
+      iso.score.new[new_dist] <- score.isoperimetric(D.new[[new_dist]])
+      
+      edges <- which(A[u,]==1, arr.ind = TRUE)
+      for (e in 1:length(edges)) {
+        if (E[e] != E[u]) {
+          conflicted.edges <- conflicted.edges[!conflicted.edges %in% c(c(e, u), c(u, e))]
+        }
+        if (E.new[e] != E.new[u]) {
+          
+        } 
+      }
+      
+    } else{
+      old_dist <- E[v]
+      new_dist <- E.new[v]
+      iso.score.new[old_dist] <- score.isoperimetric(D.new[[old_dist]])
+      iso.score.new[new_dist] <- score.isoperimetric(D.new[[new_dist]])
+    }
+    print("update iso scores")
     
     # step 3
-    
-    accept.prob <- (conflicted(D, A)/conflicted(D.new, A)) *
-    exp(-beta * (score.total(D.new, E.new) - score.total(D, E)))
-    print(score.total(D.new, E.new))
-    if (accept.prob > 1){
-      accept.prob = 1
+    print(iso.score.new)
+    if (max(iso.score.new) < 1000) {
+      accept.prob <- (conflict_old/conflicted(D.new, A)) *
+      exp(-beta * (score.total(D.new, E.new) - score.total(D, E)))
+      if (accept.prob > 1){
+        accept.prob = 1
+      }
+      
+      if (accept.prob > runif(1,0,1)){
+        D <- D.new
+        E <- E.new
+        accept <- accept + 1
+      }
+      print("accepted")
+    } else {
+      samples[i,] <- E
+      print("rejected")
     }
-    
-    if (accept.prob > runif(1,0,1)){
-      D <- D.new
-      E <- E.new
-      accept <- accept + 1
-    }
-    
-    samples[i] <- E
   }
   
   return (list(samples, accept))
@@ -150,11 +184,12 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
 ## Conflicting edge means the vertices belong to 
 ## different districts, i.e., the edge
 ## crosses a district boundary.
-pickConflictingEdge <- function(E, A){
-  edges <- findConflictingEdges(E, A)
+pickConflictingEdge <- function(edges) {
+  #edges <- findConflictingEdges(E, A)
+  total <- length(edges)
   n <- length(edges)
   ind <- ceiling(runif(1, 0, n))
-  return (edges[[ind]])
+  return (list(edges[[ind]],total))
 }
 
 ## Find all conflicting edges in graph
@@ -303,11 +338,19 @@ getInitialDistrict <-function(state, county_file) {
   return(precinct_to_district)
 }
 
+## Functions for data analysis
+
+#plots the districts in sixteen unique colors
 plotDistrict <- function(state, E) {
   map = unionSpatialPolygons(state, E)
   plot(map, col = c("turquoise", "red", "orange", "yellow", "blue", "coral2", "cornflowerblue", "darkmagenta","darkseagreen2", "deeppink", "forestgreen", "chocolate4", "burlywood4", "azure1", "cornsilk3", "darkorchid1"))
 }
 
+#returns a tuple (dems, reps) with the number of Democrat representatives and the number
+#of Republican representatives
+getElectionResults <- function(state, E) {
+  
+}
 ##----------------------------------------------------------------
 ## DRIVER CODE
 
