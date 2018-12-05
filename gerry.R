@@ -1,6 +1,6 @@
 ## POLITICAL GERRYMANDERING IN OHIO
 
-## Authors: Desh Raj, Tara Abrishami, Vasileios Papaioannou
+## Authors: Desh Raj, Tara Abrishami
 
 # Install function for packages    
 packages<-function(x){
@@ -35,8 +35,8 @@ packages(spatialEco)
 ## allocation
 
 # Total score: section 3.1
-score.total <- function(D, E){
-  return(score.pop(D)) 
+score.total <- function(state, D, iso.score){
+  return(10*score.pop(D) + score.county(state, D) + iso.score/10) 
 }
 
 #function to calculate precinct populations
@@ -77,8 +77,24 @@ score.isoperimetric <- function(district){
 }
 
 # County score: section 3.1.3
-score.county <- function(E){
-  
+score.county <- function(state, D){
+  all_counties = vector()
+  for (i in 1:length(D)) {
+    district = D[[i]]
+    district.counties = rep(NA, length(district))
+    for (j in 1:length(district)) {
+      print(district[j])
+      print(state$CNTY_GE[9])
+      print(state$CNTY_GE[district[j]])
+      district.counties[j] = state$CNTY_GE[district[j]]
+    }
+    district.counties = unique(district.counties)
+    all_counties = c(all_counties, district.counties)
+  }
+  frequencies = as.vector(table(all_counties))
+  split.two = sum(frequencies > 2)
+  split.three = sum(frequencies > 3)
+  return(split.two + 10*split.three)
 }
 
 # Minority score: section 3.1.4
@@ -110,8 +126,7 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
   print("computed initial iso scores")
   
   conflicted.edges <- findConflictingEdges(E, A)
-  number.conflicted.old <- length(conflicted.edges)
-  
+
   accept <- 0
   samples <- matrix(, nrow = T, ncol = length(E))
 
@@ -139,6 +154,7 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
     print("starting to update iso scores")
 
     iso.score.new <- isoperimetric.scores
+    conflicted.edges.new <- conflicted.edges
     if (E[u]!=E.new[u]){
       old_dist <- E[u]
       new_dist <- E.new[u]
@@ -148,17 +164,17 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
       edges <- which(A[u,]==1, arr.ind = TRUE)
       for (e in 1:length(edges)) {
         if (E[e] != E[u]) {
-          for (j in 1:length(conflicted.edges)) {
-            if (sum(conflicted.edges[[j]] == c(e, u)) == 2) {
-              conflicted.edges[[j]] = c(0,0)
-            } else if (sum(conflicted.edges[[j]] == c(u, e)) == 2) {
-              conflicted.edges[[j]] = c(0,0)
+          for (j in 1:length(conflicted.edges.new)) {
+            if (sum(conflicted.edges.new[[j]] == c(e, u)) == 2) {
+              conflicted.edges.new[[j]] = c(0,0)
+            } else if (sum(conflicted.edges.new[[j]] == c(u, e)) == 2) {
+              conflicted.edges.new[[j]] = c(0,0)
             }
           }
         }
         if (E.new[e] != E.new[u]) {
-          list.append(conflicted.edges, c(e, u))
-          list.append(conflicted.edges, c(u, e))
+          list.append(conflicted.edges.new, c(e, u))
+          list.append(conflicted.edges.new, c(u, e))
         } 
       }
       
@@ -171,17 +187,17 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
       edges <- which(A[v,]==1, arr.ind = TRUE)
       for (e in 1:length(edges)) {
         if (E[e] != E[v]) {
-          for (j in 1:length(conflicted.edges)) {
-            if (sum(conflicted.edges[[j]] == c(e, v)) == 2) {
-              conflicted.edges[[j]] = c(0,0)
-            } else if (sum(conflicted.edges[[j]] == c(v, e)) == 2) {
-              conflicted.edges[[j]] = c(0,0)
+          for (j in 1:length(conflicted.edges.new)) {
+            if (sum(conflicted.edges.new[[j]] == c(e, v)) == 2) {
+              conflicted.edges.new[[j]] = c(0,0)
+            } else if (sum(conflicted.edges.new[[j]] == c(v, e)) == 2) {
+              conflicted.edges.new[[j]] = c(0,0)
             }
           }
         }
         if (E.new[e] != E.new[v]) {
-          list.append(conflicted.edges, c(e, v))
-          list.append(conflicted.edges, c(v, e))
+          list.append(conflicted.edges.new, c(e, v))
+          list.append(conflicted.edges.new, c(v, e))
         } 
       }
       
@@ -189,11 +205,12 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
     }
     print("update iso scores")
     
-    number.conflicted.new <- length(conflicted.edges)
     # step 3
     print(iso.score.new)
     if (max(iso.score.new) < 1000) {
-      accept.prob <- (number.conflicted.old/number.conflicted.new) *
+      new_total_score = score.total(ohio, D.new, sum(iso.score.new))
+      old_total_score = score.total(ohio, D, sum(isoperimetric.scores))
+      accept.prob <- (length(conflicted.edges)/length(conflicted.edges.new)) *
       exp(-beta * (score.total(D.new, E.new) - score.total(D, E)))
       if (accept.prob > 1){
         accept.prob = 1
@@ -205,6 +222,8 @@ sampleMH <- function(A, D, E, beta=0.5, T=100){
         accept <- accept + 1
         print(length(E.new))
         samples[i,] <- E.new
+        conflicted.edges <- conflicted.edges.new #update conflicted edges
+        isoperimetric.scores <- iso.score.new #update isoperimetric scores
       }
       print("accepted")
     } else {
