@@ -139,9 +139,6 @@ sampleMH <- function(A, D, E, beta=0.4, T=1000, weights = c(200,0.005,1)){
     # step 2
     
     edge <- pickConflictingEdge(conflicted.edges)
-    while (sum(edge == c(0, 0)) == 2) {
-      edge <- pickConflictingEdge(conflicted.edges)
-    }
     
     u <- edge[1]; v <- edge[2]
     E.new <- E
@@ -366,7 +363,7 @@ getInitialDistrict <-function(state, county_file) {
 
 assignNAprecincts <- function(E, A){
   while(anyNA(E)){
-    print(sum(is.na(E)))
+    s = sum(is.na(E))
     NAs = which(is.na(E))
     for (i in 1:length(NAs)) {
       precinct = NAs[i]
@@ -376,16 +373,35 @@ assignNAprecincts <- function(E, A){
         E[precinct] = E[adj.precinct]
       }
     }
+    if (sum(is.na(E)) == s) {
+      E[which(is.na(E))] = 0
+      break
+    }
   }
   return(E)
 }
 
-## Functions for data analysis
+assignNINEprecincts <- function(E, A, D){
+  nine_graph <- graph_from_adjacency_matrix(A[D[[9]], D[[9]]])
+  comps <- components(nine_graph)
+  comp_sizes <- sort(comps$csize, decreasing = TRUE)
+  true.nine.comps <- which(comps$csize %in% c(comp_sizes[1], comp_sizes[2], comp_sizes[3]))
+  bad.nines <- D[[9]][which(!comps$membership %in% true.nine.comps)]
+  print(length(bad.nines))
+  print(sum(is.na(E)))
+  E[bad.nines] = NA
+  print(sum(is.na(E)))
+  return(assignNAprecincts(E, A))
+}
+
+#------- DATA ANALYSIS FUNCTIONS -------------
 
 #plots the districts in sixteen unique colors
 plotDistrict <- function(state, E) {
   map = unionSpatialPolygons(state, E)
-  plot(map, col = c("turquoise", "red", "orange", "yellow", "blue", "coral2", "cornflowerblue", "darkmagenta","darkseagreen2", "deeppink", "forestgreen", "chocolate4", "burlywood4", "azure1", "cornsilk3", "darkorchid1"))
+  plot(map, col = c("black", "turquoise", "red", "orange", "yellow", "blue", "coral2", 
+                    "cornflowerblue", "darkmagenta","darkseagreen2", "deeppink", 
+                    "forestgreen", "chocolate4", "burlywood4", "azure1", "cornsilk3", "darkorchid1"))
 }
 
 #returns a tuple (dems, reps) with the number of Democrat representatives and the number
@@ -409,6 +425,43 @@ getElectionResults <- function(state, D) {
   return(c(dems, reps))
 }
 
+#returns a vector of 
+sampleElectionResults <- function(sample) {
+  num.dems <- rep(0, length(sample))
+  for (i in 1:length(sample)) {
+    num.dems[i] = getElectionResults(sample[i,])
+  }
+  return(num.dems)
+}
+
+#returns an nxn matrix A, where A[i, j] is the probability that precinct i and precinct j are in the 
+#same district
+#takes a matrix of MCMC results as input
+getPrecinctAdjProbabilities <- function(sample) {
+  num.precincts = length(sample[,1])
+  P <- matrix(0, num.precincts, num.precincts)
+  for (i in 1:num.precincts) {
+    for (j in 1:num.precincts) {
+      P[i, j] <- sum(sample[,i] == sample[,j])
+    }
+  }
+  return(P)
+}
+
+#returns the sum of the probabilities that each edge in a district map E is present, 
+#given the geographical adjancency matrix A and the precinct adjacency probability matrix P
+getMapLikelihood <- function(P, E, A) {
+  conflicted.edges = findConflictingEdges(E, A)
+  score = 0
+  for (i in 1:length(conflicted.edges)) {
+    edge = conflicted.edges[[i]]
+    u <- edge[1]
+    v <- edge[2]
+    score = score + log(1 - P[u, v])
+  }
+  return(score)
+}
+
 ##-----------DRIVER CODE--------------------------
 
 set.seed(1)
@@ -427,8 +480,6 @@ A <- getAdjMatrix(adj_matrix)
 #D <- getRedistrictingByDistrict(data)
 
 ## initial redistricting from county data (with correct number of districts)
-E <- getInitialDistrict(ohio, "counties_to_districts.txt")
-E <- assignNAprecincts(E, A)
 D <- getDistrictsFromPrecincts(E)
 
 ## plot the initial district mapping because it's beautiful
