@@ -138,7 +138,7 @@ sampleMH <- function(A, D, E, beta=0.4, T=1000, weights = c(200,0.005,1)){
     
     # step 2
     
-    edge <- pickConflictingEdge(conflicted.edges)
+    edge <- pickConflictingEdge(conflicted.edges, E, A)
     
     u <- edge[1]; v <- edge[2]
     E.new <- E
@@ -151,31 +151,48 @@ sampleMH <- function(A, D, E, beta=0.4, T=1000, weights = c(200,0.005,1)){
       x <- v
     }
     
+    changed.precincts <- c(x)
+    all_adjacent_precincts <- which(A[x,] == 1)
+    for (k in 1:length(all_adjacent_precincts)) {
+      if (E[all_adjacent_precincts[k]] == E[x]) {
+        changed.precincts <- c(changed.precincts, all_adjacent_precincts[k])
+      }
+    }
+    E.new[changed.precincts] <- E.new[x]
+    old_dist <- E[x]
+    new_dist <- E.new[x]
+    
     D.new <- getDistrictsFromPrecincts(E.new)
+    old_dist_graph <- graph_from_adjacency_matrix(A[D.new[[old_dist]],D.new[[old_dist]]])
+    new_dist_graph <- graph_from_adjacency_matrix(A[D.new[[new_dist]],D.new[[new_dist]]])
+    #if (!is.connected(old_dist_graph) || !is.connected(new_dist_graph)) {
+    #  samples[i,] <- E
+    #  next
+    #}
     
     iso.score.new <- isoperimetric.scores
     conflicted.edges.new <- conflicted.edges
   
-    old_dist <- E[x]
-    new_dist <- E.new[x]
     iso.score.new[old_dist] <- score.isoperimetric(D.new[[old_dist]])
     iso.score.new[new_dist] <- score.isoperimetric(D.new[[new_dist]])
     
-    edges <- which(A[x,]==1, arr.ind = TRUE)
-    for (e in 1:length(edges)) {
-      if (E[e] != E[x]) {
-        for (j in 1:length(conflicted.edges.new)) {
-          if (sum(conflicted.edges.new[[j]] == c(e, x)) == 2 || sum(conflicted.edges.new[[j]] == c(x, e)) == 2) {
-            conflicted.edges.new = removeEdge(conflicted.edges.new, c(e, x), c(x, e))
-          } 
+    for (l in 1:length(changed.precincts)) {
+      y <- changed.precincts[l]
+      edges <- which(A[y,]==1, arr.ind = TRUE)
+      for (e in 1:length(edges)) {
+        if (E[e] != E[y]) {
+          for (j in 1:length(conflicted.edges.new)) {
+            if (sum(conflicted.edges.new[[j]] == c(e, y)) == 2 || sum(conflicted.edges.new[[j]] == c(y, e)) == 2) {
+              conflicted.edges.new = removeEdge(conflicted.edges.new, c(e, y), c(y, e))
+            } 
+          }
         }
+        if (E.new[e] != E.new[y]) {
+          list.append(conflicted.edges.new, c(e, y))
+          list.append(conflicted.edges.new, c(y, e))
+        } 
       }
-      if (E.new[e] != E.new[x]) {
-        list.append(conflicted.edges.new, c(e, x))
-        list.append(conflicted.edges.new, c(x, e))
-      } 
     }
-    
     # step 3
     
     new_total_score = score.total(ohio, D.new, sum(iso.score.new), weights)
@@ -227,9 +244,14 @@ removeEdge <- function(my.list, my.tuple1, my.tuple2) {
 ## Conflicting edge means the vertices belong to 
 ## different districts, i.e., the edge
 ## crosses a district boundary.
-pickConflictingEdge <- function(edges) {
+pickConflictingEdge <- function(edges, E, A) {
   n <- length(edges)
   ind <- ceiling(runif(1, 0, n))
+  cand.edge <- edges[[ind]]
+  while(E[cand.edge[1]] == 0 || E[cand.edge[2]] == 0) {
+    ind <- ceiling(runif(1, 0, n))
+    cand.edge <- edges[[ind]]
+  }
   return (edges[[ind]])
 }
 
@@ -335,7 +357,7 @@ getDistrictsFromPrecincts <- function(E){
   n <- ifelse( !all(is.na(E)), max(E, na.rm=T), NA)
   D <- vector("list", n)
   for (i in 1:length(E)){
-    if(!is.na(E[i])){
+    if(!is.na(E[i]) && E[i] != 0){
       D[[E[i]]] <- c(D[[E[i]]], i)
     }
   }
