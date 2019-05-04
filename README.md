@@ -8,4 +8,4 @@ To use the code, you first need to download the data from [this link](https://gi
 The code can be run end-to-end by running the script `gerry.R`. It performs MH sampling, creates redistricting maps, and saves them, along with results.
 
 ## Questions
-For any questions about the code, contact me at `draj@cs.jhu.edu`.
+For any questions about the code, contact me at `tabrish1@jhu.edu`.

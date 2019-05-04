@@ -135,13 +135,11 @@ sampleMH <- function(A, D, E, beta=0.4, T=1000, weights = c(200,0.005,1)){
   samples[1,] <- E 
 
   for (i in 2:T){
+    print(i)
     
     # step 2
     
-    edge <- pickConflictingEdge(conflicted.edges)
-    while (sum(edge == c(0, 0)) == 2) {
-      edge <- pickConflictingEdge(conflicted.edges)
-    }
+    edge <- pickConflictingEdge(conflicted.edges, E, A)
     
     u <- edge[1]; v <- edge[2]
     E.new <- E
@@ -154,31 +152,52 @@ sampleMH <- function(A, D, E, beta=0.4, T=1000, weights = c(200,0.005,1)){
       x <- v
     }
     
+    changed.precincts <- c(x)
+    all_adjacent_precincts <- which(A[x,] == 1)
+    for (k in 1:length(all_adjacent_precincts)) {
+      if (E[all_adjacent_precincts[k]] == E[x]) {
+        changed.precincts <- c(changed.precincts, all_adjacent_precincts[k])
+      }
+    }
+    E.new[changed.precincts] <- E.new[x]
+    old_dist <- E[x]
+    new_dist <- E.new[x]
+    
     D.new <- getDistrictsFromPrecincts(E.new)
+    old_dist_graph <- graph_from_adjacency_matrix(A[D.new[[old_dist]],D.new[[old_dist]]])
+    new_dist_graph <- graph_from_adjacency_matrix(A[D.new[[new_dist]],D.new[[new_dist]]])
+    if (!is.connected(old_dist_graph) || !is.connected(new_dist_graph)) {
+      print("not contiguous rejected")
+      samples[i,] <- E
+      next
+    }
     
     iso.score.new <- isoperimetric.scores
     conflicted.edges.new <- conflicted.edges
   
-    old_dist <- E[x]
-    new_dist <- E.new[x]
     iso.score.new[old_dist] <- score.isoperimetric(D.new[[old_dist]])
     iso.score.new[new_dist] <- score.isoperimetric(D.new[[new_dist]])
     
-    edges <- which(A[x,]==1, arr.ind = TRUE)
-    for (e in 1:length(edges)) {
-      if (E[e] != E[x]) {
-        for (j in 1:length(conflicted.edges.new)) {
-          if (sum(conflicted.edges.new[[j]] == c(e, x)) == 2 || sum(conflicted.edges.new[[j]] == c(x, e)) == 2) {
-            conflicted.edges.new = removeEdge(conflicted.edges.new, c(e, x), c(x, e))
-          } 
+    for (l in 1:length(changed.precincts)) {
+      y <- changed.precincts[l]
+      edges <- which(A[y,]==1, arr.ind = TRUE)
+      for (e in 1:length(edges)) {
+        if (E[e] != E[y]) {
+          to_be_removed = c()
+          for (j in 1:length(conflicted.edges.new)) {
+            if (sum(conflicted.edges.new[[j]] == c(e, y)) == 2 || 
+                sum(conflicted.edges.new[[j]] == c(y, e)) == 2) {
+              to_be_removed = c(to_be_removed, c(e,y), c(y,e))
+            } 
+          }
+          conflicted.edges.new = removeEdges(conflicted.edges, to_be_removed)
         }
+        if (E.new[e] != E.new[y]) {
+          list.append(conflicted.edges.new, c(e, y))
+          list.append(conflicted.edges.new, c(y, e))
+        } 
       }
-      if (E.new[e] != E.new[x]) {
-        list.append(conflicted.edges.new, c(e, x))
-        list.append(conflicted.edges.new, c(x, e))
-      } 
     }
-    
     # step 3
     
     new_total_score = score.total(ohio, D.new, sum(iso.score.new), weights)
@@ -214,11 +233,18 @@ sampleMH <- function(A, D, E, beta=0.4, T=1000, weights = c(200,0.005,1)){
 
 #-------- HELPER FUNCTIONS FOR SAMPLING -----------
 
-removeEdge <- function(my.list, my.tuple1, my.tuple2) {
+removeEdges <- function(my.list, edges) {
   new.list <- list()
   j <- 1
   for (i in 1:length(my.list)) {
-    if (sum(my.list[[i]] == my.tuple1) != 2 && sum(my.list[[i]] == my.tuple2) !=2) {
+    flag = TRUE
+    for (k in 1:length(edges)){
+      if (sum(my.list[[i]] == edges[k]) == 2){
+        flag = FALSE
+        break
+      }
+    }
+    if (flag) {
       new.list[[j]] <- my.list[[i]]
       j = j + 1
     }
@@ -230,9 +256,14 @@ removeEdge <- function(my.list, my.tuple1, my.tuple2) {
 ## Conflicting edge means the vertices belong to 
 ## different districts, i.e., the edge
 ## crosses a district boundary.
-pickConflictingEdge <- function(edges) {
+pickConflictingEdge <- function(edges, E, A) {
   n <- length(edges)
   ind <- ceiling(runif(1, 0, n))
+  cand.edge <- edges[[ind]]
+  while(E[cand.edge[1]] == 0 || E[cand.edge[2]] == 0) {
+    ind <- ceiling(runif(1, 0, n))
+    cand.edge <- edges[[ind]]
+  }
   return (edges[[ind]])
 }
 
@@ -245,7 +276,8 @@ findConflictingEdges <- function(E, A){
   conflict <- list()
   j <- 1
   for (i in 1:dim(edges)[1]){
-    if(!is.na(E[edges[i,1]]) && !is.na(E[edges[i,2]]) && 
+    if(!is.na(E[edges[i,1]]) && !is.na(E[edges[i,2]]) &&
+       (E[edges[i,1]] != 0) && (E[edges[i,2]] != 0) &&
         (E[edges[i,1]] != E[edges[i,2]])){
       conflict[[j]] <- edges[i,]
       j <- j+1
@@ -338,7 +370,7 @@ getDistrictsFromPrecincts <- function(E){
   n <- ifelse( !all(is.na(E)), max(E, na.rm=T), NA)
   D <- vector("list", n)
   for (i in 1:length(E)){
-    if(!is.na(E[i])){
+    if(!is.na(E[i]) && E[i] != 0){
       D[[E[i]]] <- c(D[[E[i]]], i)
     }
   }
@@ -366,7 +398,7 @@ getInitialDistrict <-function(state, county_file) {
 
 assignNAprecincts <- function(E, A){
   while(anyNA(E)){
-    print(sum(is.na(E)))
+    s = sum(is.na(E))
     NAs = which(is.na(E))
     for (i in 1:length(NAs)) {
       precinct = NAs[i]
@@ -376,16 +408,46 @@ assignNAprecincts <- function(E, A){
         E[precinct] = E[adj.precinct]
       }
     }
+    if (sum(is.na(E)) == s) {
+      E[which(is.na(E))] = 0
+      break
+    }
   }
   return(E)
 }
 
-## Functions for data analysis
+assignNINEprecincts <- function(E, A, D){
+  nine_graph <- graph_from_adjacency_matrix(A[D[[9]], D[[9]]])
+  comps <- components(nine_graph)
+  comp_sizes <- sort(comps$csize, decreasing = TRUE)
+  true.nine.comps <- which(comps$csize %in% c(comp_sizes[1], comp_sizes[2], comp_sizes[3]))
+  bad.nines <- D[[9]][which(!comps$membership %in% true.nine.comps)]
+  print(length(bad.nines))
+  print(sum(is.na(E)))
+  E[bad.nines] = NA
+  print(sum(is.na(E)))
+  return(assignNAprecincts(E, A))
+}
+
+
+assignNOISYprecincts <- function(E, A, D, ind){
+  graph <- graph_from_adjacency_matrix(A[D[[ind]], D[[ind]]])
+  comps <- components(graph)
+  good_comp <- which(comps$csize == max(comps$csize))
+  bad.precincts <- D[[ind]][which(comps$membership != good_comp)]
+  E[bad.precincts] = NA
+  return(assignNAprecincts(E, A))
+}
+
+
+#------- DATA ANALYSIS FUNCTIONS -------------
 
 #plots the districts in sixteen unique colors
 plotDistrict <- function(state, E) {
   map = unionSpatialPolygons(state, E)
-  plot(map, col = c("turquoise", "red", "orange", "yellow", "blue", "coral2", "cornflowerblue", "darkmagenta","darkseagreen2", "deeppink", "forestgreen", "chocolate4", "burlywood4", "azure1", "cornsilk3", "darkorchid1"))
+  plot(map, col = c("black","turquoise", "red", "orange", "yellow", "blue", "coral2", 
+                    "cornflowerblue", "darkmagenta","darkseagreen2", "deeppink", 
+                    "forestgreen", "chocolate4", "burlywood4", "azure1", "cornsilk3", "darkorchid1"))
 }
 
 #returns a tuple (dems, reps) with the number of Democrat representatives and the number
@@ -409,6 +471,43 @@ getElectionResults <- function(state, D) {
   return(c(dems, reps))
 }
 
+#returns a vector of 
+sampleElectionResults <- function(sample) {
+  num.dems <- rep(0, length(sample))
+  for (i in 1:length(sample)) {
+    num.dems[i] = getElectionResults(sample[i,])
+  }
+  return(num.dems)
+}
+
+#returns an nxn matrix A, where A[i, j] is the probability that precinct i and precinct j are in the 
+#same district
+#takes a matrix of MCMC results as input
+getPrecinctAdjProbabilities <- function(sample) {
+  num.precincts = length(sample[,1])
+  P <- matrix(0, num.precincts, num.precincts)
+  for (i in 1:num.precincts) {
+    for (j in 1:num.precincts) {
+      P[i, j] <- sum(sample[,i] == sample[,j])
+    }
+  }
+  return(P)
+}
+
+#returns the sum of the probabilities that each edge in a district map E is present, 
+#given the geographical adjancency matrix A and the precinct adjacency probability matrix P
+getMapLikelihood <- function(P, E, A) {
+  conflicted.edges = findConflictingEdges(E, A)
+  score = 0
+  for (i in 1:length(conflicted.edges)) {
+    edge = conflicted.edges[[i]]
+    u <- edge[1]
+    v <- edge[2]
+    score = score + log(1 - P[u, v])
+  }
+  return(score)
+}
+
 ##-----------DRIVER CODE--------------------------
 
 set.seed(1)
@@ -429,9 +528,14 @@ A <- getAdjMatrix(adj_matrix)
 ## initial redistricting from county data (with correct number of districts)
 E <- getInitialDistrict(ohio, "counties_to_districts.txt")
 E <- assignNAprecincts(E, A)
+E <- assignNINEprecincts(E, A, D)
+E <- assignNOISYprecincts(E, A, D, 6)
+E <- assignNOISYprecincts(E, A, D, 4)
+E <- assignNOISYprecincts(E, A, D, 11)
+
 D <- getDistrictsFromPrecincts(E)
 
 ## plot the initial district mapping because it's beautiful
 # plotDistrict(ohio, E)
 
-sample <- sampleMH(A, D, E)
+sample <- sampleMH(A, D, E, T=10)
